@@ -1,11 +1,13 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { AnimatePresence } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
+
 import { Ollama } from 'ollama/browser';
 import LandingPage from './components/LandingPage';
 import Sidebar from './components/Sidebar';
 import ChatArea from './components/ChatArea';
 import type { Message, ChatSession } from './types';
+import { getInstructions, cleanupStaleInstructions } from './lib/modelInstructions';
 import './App.css';
 
 const ollama = new Ollama({ host: 'http://127.0.0.1:11434' });
@@ -61,8 +63,13 @@ export default function App() {
   const [isBrowserMinimized, setIsBrowserMinimized] = useState(false);
 
   // Model state
+  // modelStatus drives the sidebar placeholder text only — never blocks the UI.
+  // 'checking' = initial fetch / silent retry in progress
+  // 'found'    = at least one model returned
+  // 'empty'    = all retries exhausted, still nothing
   const [installedModels, setInstalledModels] = useState<string[]>([]);
   const [selectedModel, setSelectedModel] = useState<string>('');
+  const [modelStatus, setModelStatus] = useState<'checking' | 'found' | 'empty'>('checking');
 
   // ── Streaming isolation ──────────────────────────────────────────────────
   // streamingContent lives ONLY in local state so each token chunk triggers
@@ -71,6 +78,8 @@ export default function App() {
   const [streamingContent, setStreamingContent] = useState('');
 
   const isLoading = useRef(false);
+  const abortStreamRef = useRef<{ abort: () => void } | null>(null);
+  const [isGenerating, setIsGenerating] = useState(false);
   const [, forceRender] = useState(0);
 
   // Persist sessions whenever they change
@@ -82,18 +91,54 @@ export default function App() {
   const activeSession = sessions.find(s => s.id === activeId) ?? sessions[0];
 
   // ─── Model helpers ───────────────────────────────────────────────────────
+  // Single plain fetch — no retries or delays (those live in the useEffect).
   const refreshModels = useCallback(async () => {
     try {
       const res = await ollama.list();
       const names = res.models.map((m: any) => m.name as string);
       setInstalledModels(names);
       setSelectedModel(prev => (prev && names.includes(prev) ? prev : names[0] ?? ''));
+      cleanupStaleInstructions(names);
+      return names;
     } catch {
-      setInstalledModels([]);
+      return [] as string[];
     }
   }, []);
 
-  useEffect(() => { refreshModels(); }, [refreshModels]);
+  // Silent background retry: fetch immediately on mount; if empty, silently retry
+  // up to MAX_RETRIES more times (RETRY_DELAY_MS apart). Never blocks the UI.
+  useEffect(() => {
+    const MAX_RETRIES = 3;
+    const RETRY_DELAY_MS = 3000;
+    let cancelled = false;
+    const timers: ReturnType<typeof setTimeout>[] = [];
+
+    const attempt = async (triesLeft: number) => {
+      if (cancelled) return;
+      const names = await refreshModels();
+      if (cancelled) return;
+
+      if (names.length > 0) {
+        setModelStatus('found');
+        return;
+      }
+      // Still empty
+      if (triesLeft <= 0) {
+        setModelStatus('empty');
+        return;
+      }
+      // Schedule next silent retry
+      const t = setTimeout(() => attempt(triesLeft - 1), RETRY_DELAY_MS);
+      timers.push(t);
+    };
+
+    attempt(MAX_RETRIES);
+
+    return () => {
+      cancelled = true;
+      timers.forEach(clearTimeout);
+    };
+  }, [refreshModels]);
 
   // ─── Theme ───────────────────────────────────────────────────────────────
   useEffect(() => {
@@ -220,39 +265,55 @@ export default function App() {
     // Arm the streaming slot
     setStreamingId(aiId);
     setStreamingContent('');
+    setIsGenerating(true);
+    isLoading.current = true;
+    forceRender(n => n + 1);
+
+    setStreamingContent('');
+    setIsGenerating(true);
     isLoading.current = true;
     forceRender(n => n + 1);
 
     let finalContent = '';
     try {
-      // Prune to the last 10 messages — prevents linear slowdown in long chats
       const contextMessages = (sessions.find(s => s.id === activeId)?.messages ?? [])
         .slice(-10)
-        .filter(m => !m.isEphemeral)                    // exclude system messages
+        .filter(m => !m.isEphemeral)
         .map(m => ({ role: m.role as 'user' | 'assistant', content: m.content }));
+
+      const systemInstructions = getInstructions(model).map(inst => ({
+        role: 'system' as const,
+        content: inst,
+      }));
 
       const response = await ollama.chat({
         model,
-        messages: [...contextMessages, { role: 'user', content: finalPrompt }],
+        messages: [...systemInstructions, ...contextMessages, { role: 'user', content: finalPrompt }],
         stream: true,
         options: { num_ctx: 2048, num_thread: 8 },
-      });
+      }) as AsyncIterable<any> & { abort: () => void };
 
-      // Hot loop — only local state is mutated, zero sessions writes
+      abortStreamRef.current = response;
+
       for await (const part of response) {
+        if (!abortStreamRef.current) break; // stop was called
         finalContent += part.message.content;
         setStreamingContent(finalContent);
       }
-    } catch (err) {
-      console.error('Ollama error:', err);
-      finalContent = "Error: Couldn't reach the engine. Is Ollama running? ⚠️";
-      setStreamingContent(finalContent);
+    } catch (err: any) {
+      const wasStopped = abortStreamRef.current === null;
+      if (!wasStopped) {
+        console.error('Ollama error:', err);
+        finalContent = finalContent || "Error: Couldn't reach the engine. Is Ollama running? ⚠️";
+        setStreamingContent(finalContent);
+      }
     } finally {
-      // Commit the completed reply to persistent state — exactly once
+      abortStreamRef.current = null;
+      setIsGenerating(false);
       const completedMsg: Message = {
         id: aiId,
         role: 'assistant',
-        content: finalContent,
+        content: finalContent || '…',
         timestamp: new Date(),
       };
       setSessions(prev => prev.map(s =>
@@ -260,7 +321,6 @@ export default function App() {
           ? { ...s, messages: [...s.messages, completedMsg] }
           : s
       ));
-      // Clear the streaming slot
       setStreamingId(null);
       setStreamingContent('');
       isLoading.current = false;
@@ -268,10 +328,16 @@ export default function App() {
     }
   }, [sessions, activeId, selectedModel, webEnabled]);
 
+  const handleStopGeneration = useCallback(() => {
+    abortStreamRef.current?.abort();
+    abortStreamRef.current = null;
+  }, []);
+
   const isDark = theme === 'dark';
 
   return (
     <div className="h-screen w-screen overflow-hidden" style={{ backgroundColor: isDark ? '#0a0a0b' : '#fafafa' }}>
+
       <AnimatePresence mode="wait">
         {screen === 'landing' ? (
           <LandingPage key="landing" onEnter={() => setScreen('chat')} />
@@ -286,6 +352,7 @@ export default function App() {
                 selectedModel={selectedModel}
                 onSelectModel={setSelectedModel}
                 installedModels={installedModels}
+                modelStatus={modelStatus}
                 onRefreshModels={refreshModels}
                 sessions={sessions}
                 activeSessionId={activeId}
@@ -303,6 +370,8 @@ export default function App() {
                 onSend={handleSend}
                 theme={theme}
                 isLoading={isLoading.current}
+                isGenerating={isGenerating}
+                onStopGeneration={handleStopGeneration}
                 webEnabled={webEnabled}
                 onToggleWeb={() => setWebEnabled(p => !p)}
                 streamingMessage={

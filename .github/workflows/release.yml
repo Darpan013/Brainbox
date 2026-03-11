@@ -59,6 +59,8 @@ jobs:
       # ── 1. Source ──────────────────────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       # ── 2. Verify required sidecar binary is present ───────────────────────
       # This is a hard gate: if the correct platform binary is missing from
@@ -75,6 +77,12 @@ jobs:
           fi
           SIZE=$(du -sh "$BINARY" | cut -f1)
           echo "✅ Sidecar found: $BINARY ($SIZE)"
+
+      # ── 2b. Make sidecar executable (non-Windows only) ────────────────────────
+      - name: Make sidecar binary executable
+        if: matrix.platform != 'windows-latest'
+        shell: bash
+        run: chmod +x src-tauri/binaries/${{ matrix.sidecar-name }}
 
       # ── 3. Rust toolchain ──────────────────────────────────────────────────
       - name: Install Rust stable

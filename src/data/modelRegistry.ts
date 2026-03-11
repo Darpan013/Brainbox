@@ -25,17 +25,6 @@ export const CATEGORY_META: Record<ModelEntry['category'], { label: string; colo
 export const MODEL_REGISTRY: ModelEntry[] = [
     // ── Small ──────────────────────────────────────────────────────────────
     {
-        id: 'qwen2.5:0.5b',
-        name: 'Qwen 2.5 (0.5B)',
-        type: 'Text / Fast',
-        params: '0.5 Billion',
-        vram: '1GB',
-        ram: '4GB',
-        storage: '397MB',
-        description: 'Ultra-lightweight Alibaba model. Ideal for fast autocomplete and low-end hardware.',
-        category: 'small',
-    },
-    {
         id: 'qwen2.5:1.5b',
         name: 'Qwen 2.5 (1.5B)',
         type: 'Text / Fast',

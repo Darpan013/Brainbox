@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Ollama } from 'ollama/browser';
 import { MODEL_REGISTRY, CATEGORY_META, type ModelEntry } from '../data/modelRegistry';
@@ -69,7 +69,9 @@ export default function ModelLibraryModal({
     const [pullPercent, setPullPercent] = useState(0);
     const [pullStatus, setPullStatus] = useState('');
     const [pullError, setPullError] = useState<string | null>(null);
+    const [isCancelling, setIsCancelling] = useState(false);
     const [activeCategory, setActiveCategory] = useState<ModelEntry['category'] | 'all'>('all');
+    const pullStreamRef = useRef<{ abort: () => void } | null>(null);
 
     const available = MODEL_REGISTRY.filter(m => !installedModels.includes(m.id));
     const filtered = activeCategory === 'all' ? available : available.filter(m => m.category === activeCategory);
@@ -96,24 +98,45 @@ export default function ModelLibraryModal({
         setPullPercent(0);
         setPullStatus('Connecting to Ollama registry…');
         setPullError(null);
+        setIsCancelling(false);
 
         try {
-            const stream = await ollama.pull({ model: selected.id, stream: true });
+            const stream = await ollama.pull({ model: selected.id, stream: true }) as AsyncIterable<any> & { abort: () => void };
+            pullStreamRef.current = stream;
             for await (const part of stream) {
+                if (!pullStreamRef.current) break; // cancelled
                 const pct = part.total && part.completed
                     ? Math.round((part.completed / part.total) * 100)
                     : pullPercent;
                 setPullPercent(pct);
                 setPullStatus(part.status ?? 'Downloading…');
             }
-            setPullPercent(100);
-            setPullStatus('Complete!');
-            await new Promise(r => setTimeout(r, 900));
-            onInstalled();
-            onClose();
+            // Only commit if not cancelled
+            if (pullStreamRef.current !== null) {
+                setPullPercent(100);
+                setPullStatus('Complete!');
+                await new Promise(r => setTimeout(r, 900));
+                onInstalled();
+                onClose();
+            }
         } catch (err: any) {
-            setPullError(err?.message ?? 'Pull failed. Is Ollama running?');
+            if (!isCancelling) {
+                setPullError(err?.message ?? 'Pull failed. Is Ollama running?');
+            }
+        } finally {
+            pullStreamRef.current = null;
         }
+    };
+
+    const handleCancelDownload = () => {
+        setIsCancelling(true);
+        pullStreamRef.current?.abort();
+        pullStreamRef.current = null;
+        // Reset to warning step so user can retry
+        setStep('warning');
+        setPullPercent(0);
+        setPullStatus('');
+        setPullError(null);
     };
 
     const goBack = () => {
@@ -450,6 +473,20 @@ export default function ModelLibraryModal({
                                             />
                                         ))}
                                     </div>
+                                    {/* Cancel download */}
+                                    <button
+                                        onClick={handleCancelDownload}
+                                        className="mt-4 w-full py-2 rounded-xl text-xs font-medium cursor-pointer transition-all"
+                                        style={{
+                                            backgroundColor: 'rgba(239,68,68,0.08)',
+                                            border: '1px solid rgba(239,68,68,0.2)',
+                                            color: '#f87171',
+                                        }}
+                                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.14)')}
+                                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.08)')}
+                                    >
+                                        Cancel Download
+                                    </button>
                                 </div>
                             </motion.div>
                         )}

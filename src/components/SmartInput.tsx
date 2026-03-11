@@ -15,6 +15,8 @@ interface SmartInputProps {
     theme: 'dark' | 'light';
     webEnabled: boolean;
     onToggleWeb: () => void;
+    isGenerating?: boolean;
+    onStopGeneration?: () => void;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────
@@ -33,6 +35,7 @@ function getPreview(content: string, maxLength = 80): string {
 export default function SmartInput({
     onSend, disabled, theme,
     webEnabled, onToggleWeb,
+    isGenerating = false, onStopGeneration,
 }: SmartInputProps) {
     const [text, setText] = useState('');
     const [snippets, setSnippets] = useState<Snippet[]>([]);
@@ -164,7 +167,7 @@ export default function SmartInput({
 
                 {/* Web Bridge Toggle */}
                 <button
-                    className="flex-shrink-0 mb-0.5 transition-all duration-200 cursor-pointer rounded-md p-0.5"
+                    className="flex-shrink-0 mb-1 transition-all duration-200 cursor-pointer rounded-md p-0.5"
                     style={{
                         color: webEnabled ? '#60a5fa' : dimIcon,
                         backgroundColor: webEnabled ? 'rgba(59,130,246,0.12)' : 'transparent',
@@ -175,32 +178,59 @@ export default function SmartInput({
                     onMouseEnter={e => { if (!webEnabled) e.currentTarget.style.color = '#60a5fa'; }}
                     onMouseLeave={e => { if (!webEnabled) e.currentTarget.style.color = dimIcon; }}
                 >
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                         <circle cx="12" cy="12" r="10" />
                         <line x1="2" y1="12" x2="22" y2="12" />
                         <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
                     </svg>
                 </button>
 
-                {/* Send button */}
-                <button
-                    onClick={handleSubmit}
-                    disabled={disabled || (!text.trim() && snippets.length === 0)}
-                    className="flex-shrink-0 w-7 h-7 mb-0.5 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer"
-                    style={{
-                        backgroundColor: !text.trim() && snippets.length === 0
-                            ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)')
-                            : 'rgba(59,130,246,0.85)',
-                        color: !text.trim() && snippets.length === 0
-                            ? (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)')
-                            : 'white',
-                        boxShadow: text.trim() || snippets.length > 0 ? '0 0 12px rgba(59,130,246,0.4)' : 'none',
-                    }}
-                >
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
-                    </svg>
-                </button>
+                {/* Send / Stop button */}
+                {isGenerating ? (
+                    /* ── Stop Generation Button ── */
+                    <button
+                        onClick={onStopGeneration}
+                        className="flex-shrink-0 w-7 h-7 mb-0.5 rounded-lg flex items-center justify-center cursor-pointer relative"
+                        title="Stop generation"
+                        style={{ backgroundColor: 'transparent' }}
+                    >
+                        {/* Spinning ring */}
+                        <svg
+                            className="absolute inset-0"
+                            width="28" height="28" viewBox="0 0 28 28"
+                            style={{ animation: 'spin 1s linear infinite' }}
+                        >
+                            <circle cx="14" cy="14" r="12" fill="none" stroke="rgba(239,68,68,0.25)" strokeWidth="2" />
+                            <circle cx="14" cy="14" r="12" fill="none" stroke="#ef4444" strokeWidth="2"
+                                strokeDasharray="18 56" strokeLinecap="round" />
+                        </svg>
+                        {/* Stop square */}
+                        <svg width="9" height="9" viewBox="0 0 9 9" fill="#ef4444">
+                            <rect x="0" y="0" width="9" height="9" rx="1.5" />
+                        </svg>
+                        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+                    </button>
+                ) : (
+                    /* ── Send Button ── */
+                    <button
+                        onClick={handleSubmit}
+                        disabled={disabled || (!text.trim() && snippets.length === 0)}
+                        className="flex-shrink-0 w-7 h-7 mb-0.5 rounded-lg flex items-center justify-center transition-all duration-200 cursor-pointer"
+                        style={{
+                            backgroundColor: !text.trim() && snippets.length === 0
+                                ? (isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)')
+                                : 'rgba(59,130,246,0.85)',
+                            color: !text.trim() && snippets.length === 0
+                                ? (isDark ? 'rgba(255,255,255,0.2)' : 'rgba(0,0,0,0.2)')
+                                : 'white',
+                            boxShadow: text.trim() || snippets.length > 0 ? '0 0 12px rgba(59,130,246,0.4)' : 'none',
+                        }}
+                    >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="22" y1="2" x2="11" y2="13" /><polygon points="22 2 15 22 11 13 2 9 22 2" />
+                        </svg>
+                    </button>
+                )}
             </div>
 
             {/* Hint */}

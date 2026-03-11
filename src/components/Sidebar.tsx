@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { invoke } from '@tauri-apps/api/core';
 import ModelLibraryModal from './ModelLibraryModal';
-import ManageModelsModal from './ManageModelsModal';
 import SettingsModal from './SettingsModal';
 import type { ChatSession } from '../types';
 
@@ -15,6 +14,7 @@ interface SidebarProps {
     selectedModel: string;
     onSelectModel: (model: string) => void;
     installedModels: string[];
+    modelStatus: 'checking' | 'found' | 'empty';
     onRefreshModels: () => void;
     // Session props
     sessions: ChatSession[];
@@ -44,17 +44,54 @@ function HardwareBar({ label, value, color }: { label: string; value: number; co
     );
 }
 
-function ModelSelector({ models, selected, onSelect, isDark }: {
-    models: string[]; selected: string; onSelect: (m: string) => void; isDark: boolean;
+function ModelSelector({ models, selected, onSelect, isDark, modelStatus, onManage }: {
+    models: string[]; selected: string; onSelect: (m: string) => void;
+    isDark: boolean; modelStatus: 'checking' | 'found' | 'empty'; onManage: () => void;
 }) {
     const [open, setOpen] = useState(false);
     const border = isDark ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
 
     if (models.length === 0) {
         return (
-            <div className="px-3 py-2.5 rounded-xl text-xs text-center"
-                style={{ backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)', border: `1px solid ${border}`, color: isDark ? '#525252' : '#9ca3af' }}>
-                No models installed
+            <div className="space-y-1.5">
+                <div
+                    className="px-3 py-2.5 rounded-xl text-xs flex items-center justify-center gap-2"
+                    style={{
+                        backgroundColor: isDark ? 'rgba(255,255,255,0.03)' : 'rgba(0,0,0,0.03)',
+                        border: `1px solid ${border}`,
+                        color: isDark ? '#525252' : '#9ca3af',
+                    }}
+                >
+                    {modelStatus === 'checking' ? (
+                        <>
+                            <span
+                                className="w-1.5 h-1.5 rounded-full flex-shrink-0"
+                                style={{
+                                    backgroundColor: '#f59e0b',
+                                    boxShadow: '0 0 5px #f59e0b',
+                                    animation: 'pulse 1.4s ease-in-out infinite',
+                                }}
+                            />
+                            Checking for models…
+                        </>
+                    ) : (
+                        'No models found'
+                    )}
+                </div>
+                {modelStatus === 'empty' && (
+                    <button
+                        onClick={onManage}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 cursor-pointer"
+                        style={{ backgroundColor: 'rgba(59,130,246,0.08)', border: '1px solid rgba(59,130,246,0.18)', color: '#60a5fa' }}
+                        onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(59,130,246,0.15)'}
+                        onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(59,130,246,0.08)'}
+                    >
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
+                            <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" />
+                        </svg>
+                        Manage Storage
+                    </button>
+                )}
             </div>
         );
     }
@@ -172,13 +209,12 @@ function HistoryItem({
 
 export default function Sidebar({
     theme, onToggleTheme, onClearChat,
-    selectedModel, onSelectModel, installedModels, onRefreshModels,
+    selectedModel, onSelectModel, installedModels, modelStatus, onRefreshModels,
     sessions, activeSessionId, onNewChat, onSwitchSession, onRenameSession, onDeleteSession,
 }: SidebarProps) {
     const [ram, setRam] = useState(38);
     const [vram, setVram] = useState(51);
     const [showLibrary, setShowLibrary] = useState(false);
-    const [showManage, setShowManage] = useState(false);
     const [showSettings, setShowSettings] = useState(false);
     const [engineStatus, setEngineStatus] = useState<'starting' | 'running' | 'error'>('starting');
     const [ctxMenu, setCtxMenu] = useState<CtxMenu | null>(null);
@@ -306,7 +342,14 @@ export default function Sidebar({
                     <section>
                         <p className="text-xs font-semibold uppercase tracking-widest mb-2" style={{ color: sectionLabel }}>Model</p>
                         <div className="space-y-2">
-                            <ModelSelector models={installedModels} selected={selectedModel} onSelect={onSelectModel} isDark={isDark} />
+                            <ModelSelector
+                                models={installedModels}
+                                selected={selectedModel}
+                                onSelect={onSelectModel}
+                                isDark={isDark}
+                                modelStatus={modelStatus}
+                                onManage={() => setShowSettings(true)}
+                            />
                             <button onClick={() => setShowLibrary(true)}
                                 className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 cursor-pointer"
                                 style={{ backgroundColor: 'rgba(59,130,246,0.1)', border: '1px solid rgba(59,130,246,0.2)', color: '#60a5fa' }}
@@ -317,17 +360,6 @@ export default function Sidebar({
                                     <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
                                 </svg>
                                 Model Library
-                            </button>
-                            <button onClick={() => setShowManage(true)}
-                                className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl text-xs font-medium transition-all duration-200 cursor-pointer"
-                                style={{ backgroundColor: 'rgba(239,68,68,0.07)', border: '1px solid rgba(239,68,68,0.15)', color: '#f87171' }}
-                                onMouseEnter={e => e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.13)'}
-                                onMouseLeave={e => e.currentTarget.style.backgroundColor = 'rgba(239,68,68,0.07)'}
-                            >
-                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
-                                    <rect x="2" y="3" width="20" height="14" rx="2" /><path d="M8 21h8M12 17v4" />
-                                </svg>
-                                Manage Storage
                             </button>
                         </div>
                     </section>
@@ -461,8 +493,7 @@ export default function Sidebar({
 
             {/* ── Modals ── */}
             {showLibrary && <ModelLibraryModal installedModels={installedModels} theme={theme} onClose={() => setShowLibrary(false)} onInstalled={onRefreshModels} />}
-            {showManage && <ManageModelsModal installedModels={installedModels} selectedModel={selectedModel} theme={theme} onClose={() => setShowManage(false)} onDeleted={onRefreshModels} />}
-            {showSettings && <SettingsModal theme={theme} onClose={() => setShowSettings(false)} onRefreshModels={onRefreshModels} />}
+            {showSettings && <SettingsModal theme={theme} onClose={() => setShowSettings(false)} onRefreshModels={onRefreshModels} installedModels={installedModels} selectedModel={selectedModel} />}
         </>
     );
 }

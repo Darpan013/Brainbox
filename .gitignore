@@ -30,9 +30,7 @@ node_modules/
 # Rust build files (The heavy 3GB target folder)
 src-tauri/target/
 
-# The massive "Muscles" we downloaded
-src-tauri/binaries/lib/
-src-tauri/binaries/lib-mac/
+
 
 # Any leftover zip or tar files
 *.zip

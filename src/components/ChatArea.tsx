@@ -12,6 +12,8 @@ interface ChatAreaProps {
     onSend: (text: string, snippets: any[]) => void;
     theme: 'dark' | 'light';
     isLoading?: boolean;
+    isGenerating?: boolean;
+    onStopGeneration?: () => void;
     webEnabled: boolean;
     onToggleWeb: () => void;
     /** In-flight assistant reply — rendered from local state, never persisted until done */
@@ -77,7 +79,7 @@ const EMPTY_HINTS = [
 // ─── Component ─────────────────────────────────────────────────────────────
 
 export default function ChatArea({
-    messages, onSend, theme, isLoading,
+    messages, onSend, theme, isLoading, isGenerating, onStopGeneration,
     webEnabled, onToggleWeb,
     streamingMessage,
     browserUrl, isBrowserMinimized,
@@ -109,6 +111,8 @@ export default function ChatArea({
         onSend, theme,
         webEnabled,
         onToggleWeb,
+        isGenerating: isGenerating ?? false,
+        onStopGeneration,
     };
 
     const showFAB = !!browserUrl && isBrowserMinimized;
