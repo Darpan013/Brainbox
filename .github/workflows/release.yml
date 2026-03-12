@@ -38,7 +38,7 @@ jobs:
               src-tauri/target/release/bundle/msi/*.msi
 
           # ── macOS Intel ───────────────────────────────────────────────────
-          - platform: macos-14
+          - platform: macos-13
             rust-target: x86_64-apple-darwin
             sidecar-name: ollama-x86_64-apple-darwin
             artifacts: |
@@ -135,15 +135,17 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
-      # ── 5.5. Setup WiX (Windows Only) ───────────────────────────────────────
+      # ── 5.5. Setup WiX 3.11 (Windows Only) ─────────────────────────────────
+      # Override the default AppData WiX cache with a short, space-free path
+      # so that light.exe and candle.exe can be invoked without quoting issues.
       - name: Setup WiX Toolset
         if: matrix.platform == 'windows-latest'
         shell: pwsh
         run: |
-          New-Item -ItemType Directory -Force -Path D:\tauri-wix
-          Invoke-WebRequest -Uri https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip -OutFile D:\tauri-wix\wix.zip
-          Expand-Archive -Path D:\tauri-wix\wix.zip -DestinationPath D:\tauri-wix
-          echo "TAURI_WIX_DIR=D:\tauri-wix" >> $env:GITHUB_ENV
+          New-Item -ItemType Directory -Force -Path C:\wix
+          Invoke-WebRequest -Uri https://github.com/wixtoolset/wix3/releases/download/wix3112rtm/wix311-binaries.zip -OutFile C:\wix\wix.zip
+          Expand-Archive -Path C:\wix\wix.zip -DestinationPath C:\wix
+          "TAURI_WIX_DIR=C:\wix" >> $env:GITHUB_ENV
 
 
       # ── 6. Build & bundle ──────────────────────────────────────────────────
@@ -151,13 +153,6 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # ── macOS code signing (optional — set these secrets to enable) ──
-          APPLE_CERTIFICATE: ""
-          APPLE_CERTIFICATE_PASSWORD: ""
-          APPLE_SIGNING_IDENTITY: ""
-          APPLE_ID: ""
-          APPLE_PASSWORD: ""
-          APPLE_TEAM_ID: ""
           # ── Windows code signing (optional — set these secrets to enable) ─
           TAURI_SIGNING_PRIVATE_KEY:    ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
