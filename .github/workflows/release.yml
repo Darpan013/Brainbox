@@ -38,7 +38,7 @@ jobs:
               src-tauri/target/release/bundle/msi/*.msi
 
           # ── macOS Intel ───────────────────────────────────────────────────
-          - platform: macos-13
+          - platform: macos-14
             rust-target: x86_64-apple-darwin
             sidecar-name: ollama-x86_64-apple-darwin
             artifacts: |
@@ -46,7 +46,7 @@ jobs:
               src-tauri/target/release/bundle/macos/*.app.tar.gz
 
           # ── macOS Apple Silicon ───────────────────────────────────────────
-          - platform: macos-latest
+          - platform: macos-14
             rust-target: aarch64-apple-darwin
             sidecar-name: ollama-aarch64-apple-darwin
             artifacts: |
@@ -135,18 +135,29 @@ jobs:
       - name: Install frontend dependencies
         run: pnpm install
 
+      # ── 5.5. Setup WiX (Windows Only) ───────────────────────────────────────
+      - name: Setup WiX Toolset
+        if: matrix.platform == 'windows-latest'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path D:\tauri-wix
+          Invoke-WebRequest -Uri https://github.com/wixtoolset/wix3/releases/download/wix3141rtm/wix314-binaries.zip -OutFile D:\tauri-wix\wix.zip
+          Expand-Archive -Path D:\tauri-wix\wix.zip -DestinationPath D:\tauri-wix
+          echo "TAURI_WIX_DIR=D:\tauri-wix" >> $env:GITHUB_ENV
+
+
       # ── 6. Build & bundle ──────────────────────────────────────────────────
       - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # ── macOS code signing (optional — set these secrets to enable) ──
-          APPLE_CERTIFICATE:            ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD:   ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY:       ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID:                     ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD:               ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID:                ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_CERTIFICATE: ""
+          APPLE_CERTIFICATE_PASSWORD: ""
+          APPLE_SIGNING_IDENTITY: ""
+          APPLE_ID: ""
+          APPLE_PASSWORD: ""
+          APPLE_TEAM_ID: ""
           # ── Windows code signing (optional — set these secrets to enable) ─
           TAURI_SIGNING_PRIVATE_KEY:    ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
@@ -154,7 +165,7 @@ jobs:
           tagName: ${{ github.ref_name }}      # e.g. v1.0.0
           releaseName: 'BrainBox ${{ github.ref_name }}'
           releaseBody: |
-            ## BrainBox ${{ github.ref_name }}
+            ## BrainBox ${{ github.ref_name }} 
 
             ### Downloads
             | Platform | Installer |
